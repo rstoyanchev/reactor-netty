@@ -516,7 +516,7 @@ class HttpClientOperations extends HttpOperations<NettyInbound, NettyOutbound>
 				ReferenceCountUtil.release(msg);
 				return;
 			}
-			if (isInvalidState(false, msg, "HttpClientOperations cannot proceed more than one response {}")) {
+			if (isInvalidState(msg)) {
 				return;
 			}
 			started = true;
@@ -559,8 +559,7 @@ class HttpClientOperations extends HttpOperations<NettyInbound, NettyOutbound>
 			}
 		}
 		else if (msg instanceof LastHttpContent) {
-			if (isInvalidState(true, msg, "HttpClientOperations received an incorrect end " +
-					"delimiter (previously used connection?)")) {
+			if (isInvalidState(msg)) {
 				return;
 			}
 			if (log.isDebugEnabled()) {
@@ -586,8 +585,7 @@ class HttpClientOperations extends HttpOperations<NettyInbound, NettyOutbound>
 		}
 		else {
 			// DefaultHttpContent
-			if (isInvalidState(true, msg, "HttpClientOperations received an incorrect chunk {} " +
-					"(previously used connection?)")) {
+			if (isInvalidState(msg)) {
 				return;
 			}
 			if (redirecting != null) {
@@ -599,13 +597,26 @@ class HttpClientOperations extends HttpOperations<NettyInbound, NettyOutbound>
 		}
 	}
 
-	private boolean isInvalidState(boolean expected, Object msg, String debugMessage) {
-		if (started != expected) {
+	private boolean isInvalidState(Object msg) {
+		boolean first = (msg instanceof HttpResponse);
+		if ((first && started) || (!first && !started)) {
 			if (log.isDebugEnabled()) {
 				if (msg instanceof ByteBufHolder) {
 					msg = ((ByteBufHolder) msg).content();
 				}
-				log.debug(format(channel(), debugMessage), msg);
+				String message;
+				if (first) {
+					message = "HttpClientOperations cannot proceed more than one response {}";
+				}
+				else if (msg instanceof LastHttpContent) {
+					message = "HttpClientOperations received an incorrect end " +
+							"delimiter (previously used connection?)";
+				}
+				else {
+					message = "HttpClientOperations received an incorrect chunk {} " +
+							"(previously used connection?)";
+				}
+				log.debug(format(channel(), message), msg);
 			}
 			ReferenceCountUtil.release(msg);
 			return true;
