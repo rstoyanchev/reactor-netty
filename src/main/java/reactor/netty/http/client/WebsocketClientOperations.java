@@ -127,15 +127,13 @@ final class WebsocketClientOperations extends HttpClientOperations
 				        .release();
 				listener().onUncaughtException(this, redirecting);
 			}
-			return;
 		}
-		if (msg instanceof PingWebSocketFrame) {
+		else if (msg instanceof PingWebSocketFrame) {
 			//"FutureReturnValueIgnored" this is deliberate
 			ctx.writeAndFlush(new PongWebSocketFrame(((PingWebSocketFrame) msg).content()));
 			ctx.read();
-			return;
 		}
-		if (msg instanceof CloseWebSocketFrame &&
+		else if (msg instanceof CloseWebSocketFrame &&
 				((CloseWebSocketFrame)msg).isFinalFragment()) {
 			if (log.isDebugEnabled()) {
 				log.debug(format(channel(), "CloseWebSocketFrame detected. Closing Websocket"));

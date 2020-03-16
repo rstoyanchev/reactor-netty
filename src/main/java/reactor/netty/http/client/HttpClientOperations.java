@@ -27,6 +27,7 @@ import java.util.function.BiConsumer;
 import java.util.function.BiPredicate;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
+
 import javax.annotation.Nullable;
 
 import io.netty.buffer.ByteBuf;
@@ -515,13 +516,7 @@ class HttpClientOperations extends HttpOperations<NettyInbound, NettyOutbound>
 				ReferenceCountUtil.release(msg);
 				return;
 			}
-			if (started) {
-				if (log.isDebugEnabled()) {
-					log.debug(format(channel(), "HttpClientOperations cannot proceed more than one response {}"),
-							response.headers()
-							        .toString());
-				}
-				ReferenceCountUtil.release(msg);
+			if (isInvalidState(false, msg, "HttpClientOperations cannot proceed more than one response {}")) {
 				return;
 			}
 			started = true;
@@ -562,16 +557,10 @@ class HttpClientOperations extends HttpOperations<NettyInbound, NettyOutbound>
 				super.onInboundNext(ctx, msg);
 				terminate();
 			}
-			return;
 		}
-
-		if (msg instanceof LastHttpContent) {
-			if (!started) {
-				if (log.isDebugEnabled()) {
-					log.debug(format(channel(), "HttpClientOperations received an incorrect end " +
-							"delimiter (previously used connection?)"));
-				}
-				ReferenceCountUtil.release(msg);
+		else if (msg instanceof LastHttpContent) {
+			if (isInvalidState(true, msg, "HttpClientOperations received an incorrect end " +
+					"delimiter (previously used connection?)")) {
 				return;
 			}
 			if (log.isDebugEnabled()) {
@@ -594,28 +583,34 @@ class HttpClientOperations extends HttpOperations<NettyInbound, NettyOutbound>
 				listener().onUncaughtException(this, redirecting);
 			}
 			terminate();
-			return;
 		}
+		else {
+			// DefaultHttpContent
+			if (isInvalidState(true, msg, "HttpClientOperations received an incorrect chunk {} " +
+					"(previously used connection?)")) {
+				return;
+			}
+			if (redirecting != null) {
+				ReferenceCountUtil.release(msg);
+				ctx.read();
+				return;
+			}
+			super.onInboundNext(ctx, msg);
+		}
+	}
 
-		if (!started) {
+	private boolean isInvalidState(boolean expected, Object msg, String debugMessage) {
+		if (started != expected) {
 			if (log.isDebugEnabled()) {
 				if (msg instanceof ByteBufHolder) {
 					msg = ((ByteBufHolder) msg).content();
 				}
-				log.debug(format(channel(), "HttpClientOperations received an incorrect chunk {} " +
-								"(previously used connection?)"),
-						msg);
+				log.debug(format(channel(), debugMessage), msg);
 			}
 			ReferenceCountUtil.release(msg);
-			return;
+			return true;
 		}
-
-		if (redirecting != null) {
-			ReferenceCountUtil.release(msg);
-			ctx.read();
-			return;
-		}
-		super.onInboundNext(ctx, msg);
+		return false;
 	}
 
 	@Override
